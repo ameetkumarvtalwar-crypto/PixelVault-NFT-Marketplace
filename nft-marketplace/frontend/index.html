@@ -217,6 +217,7 @@ main {
   padding: 2px 6px; border-radius: 4px;
 }
 
+
 /* ── Buttons ── */
 .btn {
   font-family: var(--font-mono);
@@ -343,7 +344,10 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .detail-row:last-child { border: none; }
 .detail-label { color: var(--muted); }
-.detail-val { font-family: var(--font-head); font-weight: 600; text-align: right; }
+.detail-val { font-family: var(--font-head); font-weight: 600; text-align: right;
+ }
+
+
 
 /* ── Provenance timeline ── */
 .timeline { margin-top: 20px; }
@@ -488,7 +492,7 @@ textarea { resize: vertical; min-height: 80px; }
     <div class="filters">
       <input type="text" id="searchInput" placeholder="Search by name…" oninput="filterNFTs()" />
       <select id="categoryFilter" onchange="filterNFTs()">
-        <option value="">All Categories</option>
+        <option value="all">All Categories</option>
         <option value="0">🎨 Art</option>
         <option value="1">🎵 Music</option>
         <option value="2">🎮 Gaming</option>
@@ -630,6 +634,8 @@ const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // replac
 const ABI = [
 
   // WRITE FUNCTIONS
+  "function nftItems(uint256) view returns (uint256 tokenId,string image,string tokenURI,string name,string description,address creator,address owner,uint256 price,uint256 royaltyPercent,uint8 category,bool isListed)",
+  
   "function mintNFT(string,string,string,string,uint256,uint8,uint256) returns (uint256)",
 
   "function listNFT(uint256,uint256)",
@@ -721,27 +727,89 @@ async function loadMarketplace() {
 // ─────────────────────────────────────────────
 async function filterNFTs() {
 
-  const container = document.getElementById("marketGrid");
+  const container =
+    document.getElementById("marketGrid");
 
   container.innerHTML = "";
 
   if (!allNFTs || allNFTs.length === 0) {
-    container.innerHTML = `<div class="empty">No NFTs found</div>`;
+
+    container.innerHTML =
+      `<div class="empty">No NFTs found</div>`;
+      
+
     return;
   }
 
-  for (let i = 0; i < allNFTs.length; i++) {
+  // SEARCH
+  const search =
+    document.getElementById("searchInput")
+    .value
+    .toLowerCase()
+    .trim();
 
-    const item = allNFTs[i];
+  // CATEGORY DROPDOWN
+  const categoryFilter =
+    document.getElementById("categoryFilter")
+    .value;
 
-    const image = item.image;
+  // FILTER
+  let filtered = allNFTs.filter(item => {
+
+    const nftName =
+      item.name.toLowerCase();
+
+    const nftDesc =
+      item.description.toLowerCase();
+
+    const categoryName =
+      CATEGORIES[Number(item.category)]
+      .toLowerCase();
+
+    // SEARCH MATCH
+    const matchesSearch =
+      search === "" ||
+      nftName.includes(search) ||
+      nftDesc.includes(search) ||
+      categoryName.includes(search);
+
+    // CATEGORY MATCH
+    const matchesCategory =
+      categoryFilter === "all" ||
+      Number(item.category) === Number(categoryFilter);
+
+    return matchesSearch && matchesCategory;
+  });
+
+  // NO RESULTS
+  if (filtered.length === 0) {
+
+    container.innerHTML = `
+      <div class="empty">
+        No NFTs matched your search
+      </div>
+    `;
+
+    return;
+  }
+
+  // RENDER
+  for (let i = 0; i < filtered.length; i++) {
+
+    const item = filtered[i];
 
     container.innerHTML += `
+
       <div class="card">
 
         <img
-          src="${image}"
-          style="width:100%;height:250px;object-fit:cover;border-radius:16px"
+          src="${item.image}"
+          style="
+            width:100%;
+            height:250px;
+            object-fit:cover;
+            border-radius:16px;
+          "
         />
 
         <div class="card-body">
@@ -750,15 +818,24 @@ async function filterNFTs() {
 
           <p>${item.description}</p>
 
-          <p>Price: ${ethers.formatEther(item.price)} ETH</p>
+          <p>
+            ${CATEGORIES[Number(item.category)]}
+          </p>
+
+          <p style="color:#22c55e;font-weight:bold;">
+            ${ethers.formatEther(item.price)} ETH
+          </p>
+          <button onclick="buyNFT(${item.tokenId})">
+Buy NFT
+</button>
 
         </div>
 
       </div>
+
     `;
   }
 }
-
 // ─────────────────────────────────────────────
 //  Render grid
 // ─────────────────────────────────────────────
@@ -900,21 +977,27 @@ function setMintStatus(type, msg) {
 // ─────────────────────────────────────────────
 //  Buy NFT
 // ─────────────────────────────────────────────
-async function buyNFT(tokenId) {
-  if (!contract) { showToast("Connect wallet first", "error"); return; }
-  try {
-    // Fetch fresh item data
-    const raw = await contract.nftItems(tokenId);
-    const price = raw[3]; // price field
+async function buyNFT(tokenId, price) {
+  if (!contract) {
+    showToast("Connect wallet first", "error");
+    return;
+  }
 
-    const tx = await contract.buyNFT(tokenId, { value: price });
-    showToast("⏳ Transaction submitted…");
+  try {
+    const tx = await contract.buyNFT(tokenId, {
+      value: price
+    });
+
+    showToast("⏳ Transaction submitted...", "info");
+
     await tx.wait();
+
     showToast("🎉 NFT purchased!", "success");
-    closeModalDirect();
+
     loadMarketplace();
     loadMyNFTs();
-  } catch(e) {
+
+  } catch (e) {
     showToast("Error: " + (e.reason || e.message), "error");
   }
 }
