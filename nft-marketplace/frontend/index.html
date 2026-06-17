@@ -630,7 +630,7 @@ textarea { resize: vertical; min-height: 80px; }
 // ─────────────────────────────────────────────
 //  CONFIG  –  update after deployment
 // ─────────────────────────────────────────────
-const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // replace with your deployed address
+const CONTRACT_ADDRESS = "0xd60A1490A811A834D0Da1814227160680dDeC969"; // replace with your deployed address
 const ABI = [
 
   // WRITE FUNCTIONS
@@ -643,6 +643,8 @@ const ABI = [
   "function delistNFT(uint256)",
 
   "function buyNFT(uint256) payable",
+
+  "function deleteNFT(uint256)",
 
   // READ FUNCTIONS
   "function getAllNFTs() view returns (tuple(uint256 tokenId,string image,string tokenURI,string name,string description,address creator,address owner,uint256 price,uint256 royaltyPercent,uint8 category,bool isListed)[])",
@@ -677,7 +679,7 @@ async function connectWallet() {
     return;
   }
   try {
-    provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+    provider = new ethers.JsonRpcProvider("http://127.0.0.1:7545");
 
 signer = await provider.getSigner();
 
@@ -715,8 +717,15 @@ async function loadMarketplace() {
   document.getElementById("marketGrid").innerHTML = `<div class="empty"><div class="spinner"></div> Loading…</div>`;
   try {
     allNFTs = await contract.getAllNFTs();
-    console.log(allNFTs);
-    filterNFTs();
+
+// Remove deleted NFTs
+allNFTs = allNFTs.filter(
+  nft => Number(nft.tokenId) > 0 && nft.name && nft.name.trim() !== ""
+);
+
+console.log(allNFTs);
+
+filterNFTs();
   } catch (e) {
     document.getElementById("marketGrid").innerHTML = `<div class="empty"><p style="color:var(--danger)">Error: ${e.message}</p></div>`;
   }
@@ -825,7 +834,7 @@ async function filterNFTs() {
           <p style="color:#22c55e;font-weight:bold;">
             ${ethers.formatEther(item.price)} ETH
           </p>
-          <button onclick="buyNFT(${item.tokenId})">
+        <button onclick="buyNFT(${item.tokenId}, '${item.price}')">
 Buy NFT
 </button>
 
@@ -922,8 +931,14 @@ function myCardHTML(n) {
       <span class="royalty-badge">♾ ${n.royaltyPercent}%</span>
     </div>
     <div style="margin-top:12px;display:flex;gap:8px">
-      ${listBtn}
-    </div>
+  ${listBtn}
+
+  <button
+    class="btn btn-outline"
+    onclick="event.stopPropagation();deleteNFT(${n.tokenId})">
+    Delete
+  </button>
+</div>
   </div>
 </div>`;
 }
@@ -932,48 +947,112 @@ function myCardHTML(n) {
 //  Mint NFT
 // ─────────────────────────────────────────────
 async function mintNFT() {
-  if (!contract) { showToast("Connect wallet first", "error"); return; }
-  const name    = document.getElementById("nftName").value.trim();
-  const desc    = document.getElementById("nftDesc").value.trim();
-  const uri     = document.getElementById("nftURI").value.trim();
-  const image = document.getElementById("nftImage").value.trim();
-  const royalty = Number(document.getElementById("nftRoyalty").value);
-  const cat     = Number(document.getElementById("nftCategory").value);
-  const priceE  = document.getElementById("nftPrice").value.trim();
 
-  if (!name || !desc || !uri) { showToast("Please fill required fields", "error"); return; }
+  if (!contract) {
+    showToast("Connect wallet first", "error");
+    return;
+  }
 
-  const priceWei = priceE && Number(priceE) > 0 ? ethers.parseEther(priceE) : 0n;
+  const name =
+    document.getElementById("nftName").value.trim();
 
-  setMintStatus("info", "⏳ Sending transaction…");
+  const desc =
+    document.getElementById("nftDesc").value.trim();
+
+  const uri =
+    document.getElementById("nftURI").value.trim();
+
+  const image =
+    document.getElementById("nftImage").value.trim();
+
+  const royalty =
+    Number(document.getElementById("nftRoyalty").value);
+
+  const cat =
+    Number(document.getElementById("nftCategory").value);
+
+  const priceE =
+    document.getElementById("nftPrice").value.trim();
+
+  if (!name || !desc) {
+    showToast(
+      "Please fill all required fields",
+      "error"
+    );
+    return;
+  }
+
+  const priceWei =
+    priceE && Number(priceE) > 0
+      ? ethers.parseEther(priceE)
+      : 0n;
+
+  setMintStatus(
+    "info",
+    "⏳ Sending transaction..."
+  );
+
   try {
+
     const tx = await contract.mintNFT(
-  image,
-  uri,
-  name,
-  desc,
-  royalty,
-  cat,
-  priceWei
-);
-    setMintStatus("info", `<span class="spinner"></span>Waiting for confirmation… Tx: ${shortAddr(tx.hash)}`);
+      image,
+      uri,
+      name,
+      desc,
+      royalty,
+      cat,
+      priceWei
+    );
+
+    setMintStatus(
+      "info",
+      `<span class="spinner"></span> Waiting for confirmation...`
+    );
+
     await tx.wait();
-    setMintStatus("success", `✅ NFT minted! Tx: ${tx.hash}`);
-    showToast("NFT minted successfully!", "success");
-    loadMarketplace();
-    loadMyNFTs();
+
+    setMintStatus(
+      "success",
+      "✅ NFT Minted Successfully!"
+    );
+
+    showToast(
+      "NFT Minted Successfully!",
+      "success"
+    );
+
+    document.getElementById("nftName").value = "";
+    document.getElementById("nftDesc").value = "";
+    document.getElementById("nftURI").value = "";
+    document.getElementById("nftImage").value = "";
+    document.getElementById("nftPrice").value = "0";
+
+    await loadMarketplace();
+    await loadMyNFTs();
+
   } catch (e) {
-    setMintStatus("error", "❌ " + (e.reason || e.message));
+
+    console.error(e);
+
+    setMintStatus(
+      "error",
+      "❌ " + (e.reason || e.message)
+    );
   }
 }
 
 function setMintStatus(type, msg) {
+
   const el = document.getElementById("mintStatus");
+
+  if (!el) return;
+
   el.style.display = "block";
+
   el.className = type;
+
   el.innerHTML = msg;
 }
-
 // ─────────────────────────────────────────────
 //  Buy NFT
 // ─────────────────────────────────────────────
@@ -985,7 +1064,7 @@ async function buyNFT(tokenId, price) {
 
   try {
     const tx = await contract.buyNFT(tokenId, {
-      value: price
+      value: BigInt(price)
     });
 
     showToast("⏳ Transaction submitted...", "info");
@@ -998,6 +1077,7 @@ async function buyNFT(tokenId, price) {
     loadMyNFTs();
 
   } catch (e) {
+    console.error(e);
     showToast("Error: " + (e.reason || e.message), "error");
   }
 }
@@ -1032,6 +1112,31 @@ async function delistNFT(tokenId) {
     loadMarketplace();
   } catch(e) {
     showToast("Error: " + (e.reason||e.message), "error");
+  }
+}
+
+async function deleteNFT(tokenId) {
+
+  if (!confirm("Delete this NFT?")) return;
+
+  try {
+
+    const tx = await contract.deleteNFT(tokenId);
+
+    await tx.wait();
+
+    showToast("NFT deleted", "success");
+
+    loadMarketplace();
+    loadMyNFTs();
+
+  } catch (e) {
+
+    showToast(
+      e.reason || e.message,
+      "error"
+    );
+
   }
 }
 

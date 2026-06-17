@@ -157,6 +157,18 @@ contract NFTMarketplace {
         emit NFTDelisted(tokenId);
     }
 
+    function deleteNFT(uint256 tokenId) public {
+
+    NFTItem storage item = nftItems[tokenId];
+
+    require(
+        item.owner == msg.sender,
+        "Not owner"
+    );
+
+    delete nftItems[tokenId];
+}
+
     // BUY NFT
     function buyNFT(uint256 tokenId) public payable {
 
